@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
     .AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(options => { options.Stateless = false; })
     .WithToolsFromAssembly();
 
 builder.Services.AddKeyedSingleton<IShipmentHandler, ExpressHandler>("express");
