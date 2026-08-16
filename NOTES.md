@@ -180,3 +180,117 @@ the time.
 - What to log about an inferred routing decision so it is reconstructable
 - Testing: unit tests on handlers are obvious; how to test the tool surface
   itself is not — likely stays an open question in the talk
+
+
+## `04-elicitation`
+
+**Shape:** a new `create_shipment` tool. For international shipments two fields
+are required that the caller has no way of knowing about in advance — package
+contents and declared customs value. The server asks for them mid-call.
+
+This is the branch the talk exists for.
+
+### Why this is not a validation error
+
+In REST the equivalent is a 400 listing the missing fields, and the client has to
+know the full shape of the request before sending it. Here the server drives: the
+call stays open, the server asks, the user answers, the call completes.
+
+The Inspector's protocol panel shows it plainly — `tools/call` sits **PENDING**
+while `elicitation/create` goes out in the **SERVER → CLIENT** direction. That
+inverted arrow is the single best image in the deck. In a conventional API the
+server never initiates anything.
+
+### The finding: stateless mode silently removes this capability
+
+Every getting-started guide, including the official SDK docs, recommends
+`options.Stateless = true` for HTTP transport. It scales better and there is no
+session state to manage. Follow that recommendation and elicitation stops working:
+
+```
+System.InvalidOperationException: Elicitation is not supported in stateless mode.
+   at McpServer.ThrowIfElicitationUnsupported(ElicitRequestParams request)
+```
+
+**Stateless vs stateful is not a performance tuning knob here — it decides what
+your API is capable of.** A server-to-client request needs a session to travel
+back through. This trade-off has no equivalent in REST, where you would never
+want the server to start a conversation.
+
+Set it explicitly rather than relying on the default:
+
+```csharp
+.WithHttpTransport(options => { options.Stateless = false; })
+```
+
+Probably the most concrete and least obvious point in the whole talk, and there is
+a real stack trace to show for it.
+
+### Related symptom worth mentioning
+
+Before the stateless cause was found, `server.ClientCapabilities` was coming back
+null — which sent the investigation toward the client for a while. It was not the
+client: the Inspector's `initialize` advertised `elicitation: { form: {}, url: {} }`
+correctly the whole time. No session, no negotiated client capabilities to read.
+
+Diagnostic order that would have been faster: read the exception first, check the
+protocol tab second.
+
+### Decision: no exception when the client cannot elicit
+
+Most examples throw `McpException` when `ClientCapabilities?.Elicitation` is null.
+This returns a sentence instead, consistent with the typed-result decision in
+`03`: the model can read it and explain the situation to the user. An exception
+becomes a protocol error and gives the model nothing.
+
+### Decision: descriptions on the elicitation schema too
+
+Each field in the `RequestSchema` carries a `Description`. Same principle as the
+tool contract — the description is what the human on the other end reads to
+decide what to type. The contract-is-the-description idea applies in both
+directions, not just to the tool surface.
+
+### Unplanned material: the client's own trust warning
+
+The Inspector renders a warning next to the elicitation form on its own:
+essentially, only give this server data you trust it with. Worth pausing on. A
+server that can request arbitrary data mid-operation is a new attack surface, and
+the client already treats it as one. This is a free transition from the
+elicitation segment into the security/production segment.
+
+### API notes
+
+- `IMcpServer` does not exist in this SDK version — the tool parameter type is
+  `McpServer`. Several blog examples still use the interface.
+- Schema types (`StringSchema`, `NumberSchema`) are nested under
+  `ElicitRequestParams`; needs
+  `using static ModelContextProtocol.Protocol.ElicitRequestParams;`
+- The SDK injects `McpServer` from the DI container, so a tool just declares it as
+  a parameter.
+
+### Paths verified
+
+| Case | Result |
+|---|---|
+| International, elicitation accepted | Shipment created with customs data |
+| International, elicitation declined | Cancelled, explaining why |
+| Express, international route | Refused with reason (from `03`'s typed result) |
+| Express, domestic | Created, nothing asked |
+
+The contrast between the first and last is the demo: same tool, same shape of
+call, and the server only interrupts when it actually needs something.
+
+---
+
+## Status at code freeze
+
+Branches `00`, `01`, `03`, `04` complete and pushed.
+
+`02-descriptions` folded into slides rather than a branch — the exercise is two
+descriptions of the same tool and two Inspector screenshots, not versioned code.
+
+`05-production` told rather than demoed. Serilog logging is already present in the
+tools from `03`; rate limiting, resilience and Aspire get one slide and an honest
+line: this is in the real system, not demoed here for time. Nobody penalises that.
+
+Remaining critical path is not code — it is the recorded hook and the slides.
