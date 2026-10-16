@@ -36,7 +36,7 @@ from earlier ones.
 | `01-first-tool` | One MCP tool, Streamable HTTP transport, mapped at `/mcp` |
 | `03-handlers` | Three carriers behind `IShipmentHandler`, keyed DI, typed results instead of exceptions |
 | `04-elicitation` | The server asks for customs data mid-call on international shipments |
-| `main` | Same as `04` |
+| `main` | `04` plus a `freight` carrier for heavy domestic packages |
 
 `02-descriptions` is intentionally missing. The tool-description exercise only
 works once there are several tools for a model to confuse — it is presented live
@@ -67,8 +67,11 @@ Add a server with transport **Streamable HTTP** pointing at
 
 - Call `get_quote` with a carrier that does not exist. Note that you get a usable
   sentence back, not an exception — including the list of valid carriers.
-- Call `get_best_quote` with a 60kg domestic package. No carrier can take it, and
-  the message points you at the other tool to find out why.
+- Call `get_best_quote` with a 1,200kg domestic package. No carrier can take it,
+  and the message points you at the other tool to find out why.
+- Call `get_best_quote` with a 60kg domestic package and the `freight` carrier
+  takes it. Then call `get_quote` with `freight` and 20kg: the refusal does not
+  just say no, it sends you to `get_best_quote`.
 - Call `create_shipment` with postal codes of different lengths (the toy rule for
   "international"). The server interrupts and asks for customs information. Watch
   the Inspector's Protocol tab: `tools/call` stays **pending** while

@@ -7,11 +7,15 @@ namespace ShippingMcp.Tools;
 [McpServerToolType]
 public class ShippingTools(IServiceProvider services, ILogger<ShippingTools> logger)
 {
-    private static readonly string[] Carriers = ["express", "economy", "international"];
+    // Todos los handlers registrados con clave: Program.cs es la única lista.
+    private IEnumerable<IShipmentHandler> Handlers =>
+        services.GetKeyedServices<IShipmentHandler>(KeyedService.AnyKey);
+
+    private string CarrierList => string.Join(", ", Handlers.Select(h => h.Carrier));
 
     [McpServerTool]
     [Description("Lists the shipping carriers available on this server.")]
-    public string ListCarriers() => string.Join(", ", Carriers);
+    public string ListCarriers() => CarrierList;
 
     // El llamante elige el carrier.
     [McpServerTool]
@@ -24,7 +28,7 @@ public class ShippingTools(IServiceProvider services, ILogger<ShippingTools> log
     {
         var handler = services.GetKeyedService<IShipmentHandler>(carrier);
         if (handler is null)
-            return $"Unknown carrier '{carrier}'. Available carriers: {string.Join(", ", Carriers)}.";
+            return $"Unknown carrier '{carrier}'. Available carriers: {CarrierList}.";
 
         var result = handler.GetQuote(new(origin, destination, weightKg));
         logger.LogInformation("Quote requested for carrier {Carrier}: {Outcome}",
@@ -43,8 +47,9 @@ public class ShippingTools(IServiceProvider services, ILogger<ShippingTools> log
     {
         var request = new QuoteRequest(origin, destination, weightKg);
 
-        var quotes = Carriers
-            .Select(c => services.GetRequiredKeyedService<IShipmentHandler>(c))
+        var handlers = Handlers.ToList();
+
+        var quotes = handlers
             .Where(h => h.CanHandle(request))
             .Select(h => h.GetQuote(request))
             .Where(r => r.Success)
@@ -58,7 +63,7 @@ public class ShippingTools(IServiceProvider services, ILogger<ShippingTools> log
         var best = quotes[0];
         logger.LogInformation(
             "Best quote selected: {Carrier} at {Price} — {Considered} carriers considered, {Eligible} eligible",
-            best.Carrier, best.Price, Carriers.Length, quotes.Count);
+            best.Carrier, best.Price, handlers.Count, quotes.Count);
 
         return $"{best.Carrier}: ${best.Price:F2} USD, {best.EstimatedDays} business days.";
     }

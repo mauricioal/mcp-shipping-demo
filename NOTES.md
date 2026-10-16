@@ -170,6 +170,10 @@ can handle this" path demonstrable. Raising the international ceiling would make
 the domain feel more complete but produces an identical demo result — not worth
 the time.
 
+*Revisited after code freeze:* issue #1 closed the gap with a `freight` carrier,
+and the "no carrier" demo moved to 1,200kg. See *After code freeze: freight
+carrier (issue #1)*.
+
 ---
 
 ## Open questions for later branches
@@ -294,3 +298,98 @@ tools from `03`; rate limiting, resilience and Aspire get one slide and an hones
 line: this is in the real system, not demoed here for time. Nobody penalises that.
 
 Remaining critical path is not code — it is the recorded hook and the slides.
+
+---
+
+## After code freeze: freight carrier (issue #1)
+
+**Shape:** a fourth handler, `FreightHandler`, for domestic packages over 50kg and
+up to 1,000kg ($35 + $0.60/kg, 4 business days). No new tools: `list_carriers`
+and `get_best_quote` pick it up from the registrations.
+
+### Decision reversed: the >50kg domestic gap
+
+`03` left the gap open on purpose so the "no carrier can handle this" path had
+something to show. Issue #1 closed it, because a 60kg domestic package with no
+carrier at all reads as a missing feature, not a teaching moment. The demo
+survives: nothing takes a domestic package over 1,000kg, so the README now uses
+1,200kg for the same path.
+
+### Decision: one carrier list, read from the container
+
+Before this change each carrier was named twice: as its registration key in
+`Program.cs` and again in a `Carriers` array in `ShippingTools`. Forgetting the
+array would have left a new carrier invisible to `list_carriers` and
+`get_best_quote` while `get_quote` still found it by key.
+
+The tools now ask the container for every keyed registration:
+
+```csharp
+services.GetKeyedServices<IShipmentHandler>(KeyedService.AnyKey)
+```
+
+`Program.cs` is the only list. `get_quote` and `create_shipment` still resolve by
+key at the call site, so the `03` decision holds. And `get_best_quote`, which
+enumerates every handler and filters with `CanHandle`, is now exactly the third
+selection style seen in the reference (a collection filtered by predicate),
+reached without giving up keyed lookup. Both styles sit side by side in one
+class, which is the "who picks the provider" question in code.
+
+- `AnyKey` enumeration returns every service registered with a specific key.
+  Here they come back in registration order; that is observed, not documented.
+  On .NET 10 the singular `GetKeyedService(AnyKey)` throws
+  `InvalidOperationException`; only the plural form is meant for this.
+- Each name is still spelled three times inside the code: the registration key,
+  the handler's `Carrier` property, and the literal each handler passes to
+  `new Quote(...)`. A typo in the key would make `list_carriers` advertise a name
+  `get_quote` cannot resolve; a typo in the literal would make `get_best_quote`
+  report a carrier that does not exist. Left as is; a registration helper costs
+  more explanation than it saves.
+
+### Decision: freight's refusals name the next step
+
+Under 50kg points at `get_best_quote`, cross-border points at the
+`international` carrier, and over 1,000kg states the limit and suggests splitting
+the shipment. The over-1,000kg message deliberately says nothing about other
+carriers: a handler that speaks for the rest goes stale the moment a carrier is
+added, and a refusal the model acts on must not lie. The older carriers'
+refusals only state the limit; bringing them up to the same standard is a
+separate change.
+
+### Quirk worth mentioning
+
+At the boundary a heavier package is cheaper: 50kg costs $78.00 with express,
+50.5kg costs $65.30 with freight. The pricing comes from the issue and was not
+changed. A model optimising for price reads your rate table more literally than a
+customer does, and may spot this first.
+
+### Verifying from the command line
+
+The Inspector has a CLI mode that handles the session handshake itself:
+
+```bash
+npx @modelcontextprotocol/inspector --cli http://localhost:5103/mcp --transport http \
+  --method tools/call --tool-name get_quote \
+  --tool-arg carrier=freight 'origin="10001"' 'destination="94105"' weightKg=60
+```
+
+Quote the postal codes. Unquoted, the CLI sends `10001` as a JSON number, the SDK
+fails to bind it to a `string` parameter before the tool runs, and the only thing
+that comes back is `An error occurred invoking 'get_quote'.` That is the
+"exceptions give the model nothing" point from `03`, arriving from a direction the
+tool code cannot catch.
+
+### Paths verified
+
+| Case | Result |
+|---|---|
+| `list_carriers` | `express, economy, international, freight` |
+| `get_quote` freight, 60kg domestic | `$71.00 USD, 4 business days` |
+| `get_best_quote` 60kg domestic | Freight, where it used to be "no carrier" |
+| `get_best_quote` 10kg domestic | Economy, unchanged |
+| `get_best_quote` 50kg domestic | Express: freight starts above 50kg |
+| `get_quote` freight, 20kg | Refused, points at `get_best_quote` |
+| `get_quote` freight, cross-border | Refused, domestic only, points at `international` |
+| `get_quote` freight, 1,200kg | Refused, states the 1,000kg limit |
+| `get_best_quote` 1,200kg domestic | "No carrier can handle this shipment", the demo's new home |
+| `create_shipment` freight, 60kg domestic | Created, nothing asked |
