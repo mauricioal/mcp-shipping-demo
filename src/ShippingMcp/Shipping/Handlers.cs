@@ -55,3 +55,27 @@ public class InternationalHandler : IShipmentHandler
         return QuoteResult.Ok(new("international", 42.00m + (decimal)r.WeightKg * 2.10m, 12));
     }
 }
+
+public class FreightHandler : IShipmentHandler
+{
+    public string Carrier => "freight";
+
+    public bool CanHandle(QuoteRequest r) =>
+        r.WeightKg > 50 && r.WeightKg <= 1000 && !ExpressHandler.IsInternational(r);
+
+    public QuoteResult GetQuote(QuoteRequest r)
+    {
+        if (ExpressHandler.IsInternational(r))
+            return QuoteResult.Unsupported(
+                "Freight operates domestically only. For cross-border shipments use the international carrier.");
+        if (r.WeightKg <= 50)
+            return QuoteResult.Unsupported(
+                "Freight only accepts packages over 50kg. For lighter packages, call get_best_quote to find the cheapest carrier.");
+        if (r.WeightKg > 1000)
+            return QuoteResult.Unsupported(
+                "Freight does not accept packages over 1,000kg, and no other carrier takes heavier domestic packages. "
+                + "Split the shipment into packages of 1,000kg or less.");
+
+        return QuoteResult.Ok(new("freight", 35.00m + (decimal)r.WeightKg * 0.60m, 4));
+    }
+}

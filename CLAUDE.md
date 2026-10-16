@@ -21,10 +21,10 @@ There is no test project and no linter. Behaviour is verified by calling tools i
 
 ## Architecture
 
-- `Program.cs` wires everything: `AddMcpServer().WithHttpTransport(...).WithToolsFromAssembly()`, one keyed singleton registration per carrier, and `MapMcp("/mcp")`.
+- `Program.cs` wires everything: `AddMcpServer().WithHttpTransport(...).WithToolsFromAssembly()`, one keyed singleton registration per carrier, and `MapMcp("/mcp")`. Those registrations are the only carrier list.
 - `Shipping/` is the domain. `IShipmentHandler` (`Carrier`, `CanHandle`, `GetQuote`) has one implementation per carrier in `Handlers.cs`, registered with keyed DI under its carrier code. `QuoteResult` is a typed success-or-reason result.
 - `Tools/` is the MCP surface. Every `[McpServerToolType]` class is discovered automatically, and the SDK snake-cases method names (`GetBestQuote` becomes `get_best_quote`). Tools resolve handlers by key at the call site; NOTES.md explains why this differs from the production pattern it is modelled on.
-    - `ShippingTools`: `list_carriers`, `get_quote` (the caller picks the carrier) and `get_best_quote` (the server filters handlers with `CanHandle` and returns the cheapest).
+    - `ShippingTools`: `list_carriers`, `get_quote` (the caller picks the carrier) and `get_best_quote` (the server filters handlers with `CanHandle` and returns the cheapest). `list_carriers` and `get_best_quote` read the carriers from the container with `GetKeyedServices<IShipmentHandler>(KeyedService.AnyKey)`, so adding a carrier means one handler class and one registration, never a second list.
     - `ShipmentTools`: `create_shipment`, which asks the client for customs data through elicitation on international shipments.
 - "International" is a toy rule: origin and destination postal codes of different lengths (`ExpressHandler.IsInternational`).
 
@@ -42,7 +42,7 @@ SDK notes (`ModelContextProtocol.AspNetCore` 2.1.0): a tool takes `McpServer` as
 
 ## Git and GitHub
 
-- The numbered branches (`00-empty`, `01-first-tool`, `03-handlers`, `04-elicitation`) are teaching snapshots that each run on their own, and `main` equals `04-elicitation`. Don't modify them; new work branches off `main`.
+- The numbered branches (`00-empty`, `01-first-tool`, `03-handlers`, `04-elicitation`) are teaching snapshots that each run on their own, and `main` is `04-elicitation` plus later feature work (the `freight` carrier). Don't modify them; new work branches off `main`.
 - Commit messages use conventional prefixes: `feat:`, `docs:`, `chore:`.
 - When behaviour or the tool surface changes, update README.md and NOTES.md in the same change.
 - The repo root holds untracked `.pptx` and `.mp4` files from the talk. Never commit them: stage files by name, never with `git add -A` or `git add .`.
