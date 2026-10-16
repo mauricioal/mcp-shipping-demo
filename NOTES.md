@@ -171,7 +171,8 @@ the domain feel more complete but produces an identical demo result — not wort
 the time.
 
 *Revisited after code freeze:* issue #1 closed the gap with a `freight` carrier,
-and the "no carrier" demo moved to 1,200kg. See the last section.
+and the "no carrier" demo moved to 1,200kg. See *After code freeze: freight
+carrier (issue #1)*.
 
 ---
 
