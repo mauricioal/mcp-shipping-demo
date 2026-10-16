@@ -73,8 +73,7 @@ public class FreightHandler : IShipmentHandler
                 "Freight only accepts packages over 50kg. For lighter packages, call get_best_quote to find the cheapest carrier.");
         if (r.WeightKg > 1000)
             return QuoteResult.Unsupported(
-                "Freight does not accept packages over 1,000kg, and no other carrier takes heavier domestic packages. "
-                + "Split the shipment into packages of 1,000kg or less.");
+                "Freight does not accept packages over 1,000kg. Split the shipment into packages of 1,000kg or less.");
 
         return QuoteResult.Ok(new("freight", 35.00m + (decimal)r.WeightKg * 0.60m, 4));
     }

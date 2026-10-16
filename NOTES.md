@@ -335,20 +335,26 @@ selection style seen in the reference (a collection filtered by predicate),
 reached without giving up keyed lookup. Both styles sit side by side in one
 class, which is the "who picks the provider" question in code.
 
-- `AnyKey` enumeration returns every service registered with a specific key, in
-  registration order. On .NET 10 the singular `GetKeyedService(AnyKey)` throws
+- `AnyKey` enumeration returns every service registered with a specific key.
+  Here they come back in registration order; that is observed, not documented.
+  On .NET 10 the singular `GetKeyedService(AnyKey)` throws
   `InvalidOperationException`; only the plural form is meant for this.
-- One duplication remains: the registration key and the handler's `Carrier`
-  property spell the same name. A typo in one would make `list_carriers`
-  advertise a name `get_quote` cannot resolve. Left as is; a registration helper
-  costs more explanation than it saves.
+- Each name is still spelled three times inside the code: the registration key,
+  the handler's `Carrier` property, and the literal each handler passes to
+  `new Quote(...)`. A typo in the key would make `list_carriers` advertise a name
+  `get_quote` cannot resolve; a typo in the literal would make `get_best_quote`
+  report a carrier that does not exist. Left as is; a registration helper costs
+  more explanation than it saves.
 
 ### Decision: freight's refusals name the next step
 
 Under 50kg points at `get_best_quote`, cross-border points at the
-`international` carrier, and over 1,000kg says nothing takes it and suggests
-splitting the shipment. The older carriers' refusals only state the limit;
-bringing them up to the same standard is a separate change.
+`international` carrier, and over 1,000kg states the limit and suggests splitting
+the shipment. The over-1,000kg message deliberately says nothing about other
+carriers: a handler that speaks for the rest goes stale the moment a carrier is
+added, and a refusal the model acts on must not lie. The older carriers'
+refusals only state the limit; bringing them up to the same standard is a
+separate change.
 
 ### Quirk worth mentioning
 
